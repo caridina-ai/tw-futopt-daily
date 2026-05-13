@@ -20,3 +20,6 @@ htmlcov/
 
 # Download temp files
 *.part
+
+# Backfill run logs
+logs/

@@ -1,0 +1,14 @@
+{
+  "name": "futures",
+  "source_root": "E:/futures",
+  "date_source": "filename",
+  "date_glob": "[0-9][0-9][0-9][0-9]/Daily_[0-9][0-9][0-9][0-9]_[0-9][0-9]_[0-9][0-9].zip",
+  "date_format": "Daily_%Y_%m_%d.zip",
+  "date_path_template": "%Y",
+  "files": [
+    {
+      "source_template": "Daily_%Y_%m_%d.zip",
+      "target_template": "Daily_%Y_%m_%d.zip"
+    }
+  ]
+}

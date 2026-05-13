@@ -79,3 +79,34 @@ next day's run will try that date again.
   long as there are no network or filesystem failures.
 - Single-date force mode exits with an error if any of that date's four files is
   missing or failed.
+
+## Backfill Historical Files
+
+Historical archives can be copied into `TW_FUTOPT_DIR` with the config-driven
+backfill tool. It validates each source zip before copying, skips existing target
+files, writes every file decision to a plain text log, and copies through a
+temporary `.part` file before replacing the final target.
+
+Smoke test the two built-in configs without copying files:
+
+```powershell
+python -m tw_futopt.backfill backfill_configs\user_tick.json --dry-run --start-date 2017-07-28 --end-date 2017-07-28 --log logs\smoke-user-tick.log
+python -m tw_futopt.backfill backfill_configs\futures.json --dry-run --start-date 2011-01-03 --end-date 2011-01-03 --log logs\smoke-futures.log
+```
+
+Run the full backfill. Run `user_tick.json` first because it contains
+`Daily`, `Daily_B`, `Daily_C`, and `OptionsDaily`; then run `futures.json` as a
+secondary source for `Daily` only.
+
+```powershell
+python -m tw_futopt.backfill backfill_configs\user_tick.json --log logs\backfill-user-tick.log
+python -m tw_futopt.backfill backfill_configs\futures.json --log logs\backfill-futures.log
+```
+
+The built-in configs assume these source layouts:
+
+- `T:\UserTick\yyyymmdd\yyyymmdd-Daily_yyyy_mm_dd.zip`
+- `T:\UserTick\yyyymmdd\yyyymmdd-Daily_yyyy_mm_dd_B.zip`
+- `T:\UserTick\yyyymmdd\yyyymmdd-Daily_yyyy_mm_dd_C.zip`
+- `T:\UserTick\yyyymmdd\yyyymmdd-OptionsDaily_yyyy_mm_dd.zip`
+- `E:\futures\yyyy\Daily_yyyy_mm_dd.zip`
