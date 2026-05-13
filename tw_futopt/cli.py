@@ -1,0 +1,220 @@
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import os
+import shutil
+import sys
+import tempfile
+import urllib.error
+import urllib.request
+import zipfile
+from dataclasses import dataclass
+from pathlib import Path
+
+
+ENV_OUTPUT_DIR = "TW_FUTOPT_DIR"
+DEFAULT_DAYS = 30
+USER_AGENT = "tw-futopt/0.1 (+https://www.taifex.com.tw/)"
+
+
+class RemoteFileUnavailable(Exception):
+    """Raised when TAIFEX returns a page instead of a downloadable zip."""
+
+
+@dataclass(frozen=True)
+class DownloadSpec:
+    name_template: str
+    url_template: str
+
+    def filename(self, trade_date: dt.date) -> str:
+        return trade_date.strftime(self.name_template)
+
+    def url(self, trade_date: dt.date) -> str:
+        return trade_date.strftime(self.url_template)
+
+
+DOWNLOAD_SPECS = (
+    DownloadSpec(
+        "Daily_%Y_%m_%d.zip",
+        "https://www.taifex.com.tw/DailyDownload/DailyDownloadCSV/Daily_%Y_%m_%d.zip",
+    ),
+    DownloadSpec(
+        "Daily_%Y_%m_%d_B.zip",
+        "https://www.taifex.com.tw/DailyDownload/DailyDownloadCSV_B/Daily_%Y_%m_%d_B.zip",
+    ),
+    DownloadSpec(
+        "Daily_%Y_%m_%d_C.zip",
+        "https://www.taifex.com.tw/DailyDownload/DailyDownloadCSV_C/Daily_%Y_%m_%d_C.zip",
+    ),
+    DownloadSpec(
+        "OptionsDaily_%Y_%m_%d.zip",
+        "https://www.taifex.com.tw/DailyDownload/OptionsDailyDownloadCSV/OptionsDaily_%Y_%m_%d.zip",
+    ),
+)
+
+
+@dataclass
+class Summary:
+    downloaded: int = 0
+    skipped: int = 0
+    missing: int = 0
+    failed: int = 0
+
+    @property
+    def ok(self) -> bool:
+        return self.failed == 0
+
+
+def parse_date(value: str) -> dt.date:
+    try:
+        return dt.date.fromisoformat(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(
+            f"invalid date {value!r}; expected yyyy-mm-dd"
+        ) from exc
+
+
+def output_dir_from_env() -> Path:
+    raw = os.environ.get(ENV_OUTPUT_DIR)
+    if not raw:
+        raise RuntimeError(f"{ENV_OUTPUT_DIR} is not set")
+    return Path(raw).expanduser()
+
+
+def iter_default_dates(today: dt.date | None = None) -> list[dt.date]:
+    anchor = today or dt.date.today()
+    return [anchor - dt.timedelta(days=offset) for offset in range(DEFAULT_DAYS)]
+
+
+def is_zip_file(path: Path) -> bool:
+    return zipfile.is_zipfile(path)
+
+
+def fetch_url(url: str, target: Path, timeout: float) -> None:
+    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    target.parent.mkdir(parents=True, exist_ok=True)
+
+    fd, temp_name = tempfile.mkstemp(
+        prefix=f".{target.name}.", suffix=".part", dir=str(target.parent)
+    )
+    temp_path = Path(temp_name)
+    try:
+        with os.fdopen(fd, "wb") as temp_file:
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                shutil.copyfileobj(response, temp_file)
+
+        if not is_zip_file(temp_path):
+            raise RemoteFileUnavailable("response is not a zip file")
+
+        temp_path.replace(target)
+    except Exception:
+        temp_path.unlink(missing_ok=True)
+        raise
+
+
+def download_one(
+    spec: DownloadSpec,
+    trade_date: dt.date,
+    output_dir: Path,
+    force: bool,
+    timeout: float,
+) -> str:
+    filename = spec.filename(trade_date)
+    target = output_dir / filename
+    if target.exists() and not force and is_zip_file(target):
+        print(f"skip       {filename}")
+        return "skipped"
+
+    if target.exists() and not force:
+        print(f"replace    {filename} (existing file is not a valid zip)")
+
+    try:
+        fetch_url(spec.url(trade_date), target, timeout)
+    except urllib.error.HTTPError as exc:
+        if exc.code == 404:
+            print(f"missing    {filename} (404)")
+            return "missing"
+        print(f"failed     {filename} ({exc})", file=sys.stderr)
+        return "failed"
+    except RemoteFileUnavailable as exc:
+        print(f"missing    {filename} ({exc})")
+        return "missing"
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        print(f"failed     {filename} ({exc})", file=sys.stderr)
+        return "failed"
+
+    print(f"downloaded {filename}")
+    return "downloaded"
+
+
+def run(dates: list[dt.date], output_dir: Path, force: bool, timeout: float) -> Summary:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    summary = Summary()
+
+    for trade_date in dates:
+        print(f"[{trade_date.isoformat()}]")
+        for spec in DOWNLOAD_SPECS:
+            result = download_one(spec, trade_date, output_dir, force, timeout)
+            if result == "downloaded":
+                summary.downloaded += 1
+            elif result == "skipped":
+                summary.skipped += 1
+            elif result == "missing":
+                summary.missing += 1
+            else:
+                summary.failed += 1
+
+    return summary
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="python -m tw_futopt",
+        description="Download recent TAIFEX futures/options daily zip files.",
+    )
+    parser.add_argument(
+        "date",
+        nargs="?",
+        type=parse_date,
+        help="force overwrite files for one date, formatted yyyy-mm-dd",
+    )
+    parser.add_argument(
+        "--timeout",
+        type=float,
+        default=60.0,
+        help="download timeout in seconds (default: 60)",
+    )
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+
+    try:
+        output_dir = output_dir_from_env()
+    except RuntimeError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+    force = args.date is not None
+    dates = [args.date] if force else iter_default_dates()
+
+    print(f"output dir: {output_dir}")
+    print("mode: force overwrite" if force else f"mode: default {DEFAULT_DAYS} days")
+
+    summary = run(dates, output_dir, force, args.timeout)
+    print(
+        "summary: "
+        f"downloaded={summary.downloaded}, "
+        f"skipped={summary.skipped}, "
+        f"missing={summary.missing}, "
+        f"failed={summary.failed}"
+    )
+
+    if force and (summary.failed > 0 or summary.missing > 0):
+        return 1
+    if summary.failed > 0:
+        return 1
+    return 0

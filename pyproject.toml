@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tw-futopt-daily"
+version = "0.1.0"
+description = "Download recent TAIFEX futures and options daily zip files."
+readme = "README.md"
+requires-python = ">=3.9"
+license = "MIT"
+authors = [
+    { name = "Caridina AI", email = "caridina.ai@gmail.com" }
+]
+keywords = ["taifex", "futures", "options", "taiwan"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Operating System :: Microsoft :: Windows",
+    "Topic :: Office/Business :: Financial",
+]
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/caridina_ai/tw-futopt-daily"
+Repository = "https://github.com/caridina_ai/tw-futopt-daily"
+
+[tool.setuptools.packages.find]
+include = ["tw_futopt*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "integration: tests that access the TAIFEX website",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4.2",
+]
+
+[tool.ai]
+assisted_by = ["OpenAI Codex (GPT-5.5)"]

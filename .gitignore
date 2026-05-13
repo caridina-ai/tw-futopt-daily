@@ -1,0 +1,22 @@
+# Python bytecode/cache
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*$py.class
+
+# Packaging/build outputs
+*.egg-info/
+build/
+dist/
+
+# Test/coverage caches
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local environments
+.venv/
+.env
+
+# Download temp files
+*.part
