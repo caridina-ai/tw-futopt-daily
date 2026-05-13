@@ -22,11 +22,18 @@ classifiers = [
 dependencies = []
 
 [project.urls]
-Homepage = "https://github.com/caridina_ai/tw-futopt-daily"
-Repository = "https://github.com/caridina_ai/tw-futopt-daily"
+Homepage = "https://github.com/caridina-ai/tw-futopt-daily"
+Repository = "https://github.com/caridina-ai/tw-futopt-daily"
+
+[project.scripts]
+tw-futopt = "tw_futopt.cli:main"
+tw-futopt-backfill = "tw_futopt.backfill:main"
 
 [tool.setuptools.packages.find]
 include = ["tw_futopt*"]
+
+[tool.setuptools.package-data]
+tw_futopt = ["backfill_configs/*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -1,0 +1,26 @@
+{
+  "name": "user-tick",
+  "source_root": "T:/UserTick",
+  "date_source": "directory",
+  "date_glob": "[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]",
+  "date_format": "%Y%m%d",
+  "date_path_template": "%Y%m%d",
+  "files": [
+    {
+      "source_template": "%Y%m%d-Daily_%Y_%m_%d.zip",
+      "target_template": "Daily_%Y_%m_%d.zip"
+    },
+    {
+      "source_template": "%Y%m%d-Daily_%Y_%m_%d_B.zip",
+      "target_template": "Daily_%Y_%m_%d_B.zip"
+    },
+    {
+      "source_template": "%Y%m%d-Daily_%Y_%m_%d_C.zip",
+      "target_template": "Daily_%Y_%m_%d_C.zip"
+    },
+    {
+      "source_template": "%Y%m%d-OptionsDaily_%Y_%m_%d.zip",
+      "target_template": "OptionsDaily_%Y_%m_%d.zip"
+    }
+  ]
+}

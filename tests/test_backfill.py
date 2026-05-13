@@ -239,3 +239,23 @@ def test_main_uses_tw_futopt_dir_env(
 
     assert backfill.main([str(config_path), "--log", str(log_path)]) == 0
     assert (output_dir / "Daily_2026_05_05.zip").exists()
+
+
+def test_copy_packaged_configs_initializes_user_config_dir(tmp_path: Path) -> None:
+    target_dir = tmp_path / "configs"
+
+    copied = backfill.copy_packaged_configs(target_dir)
+
+    copied_names = {path.name for path in copied}
+    assert {"user_tick.json", "futures.json"} <= copied_names
+    assert (target_dir / "user_tick.json").exists()
+    assert (target_dir / "futures.json").exists()
+
+
+def test_main_init_configs_does_not_require_config_path(tmp_path: Path) -> None:
+    target_dir = tmp_path / "configs"
+
+    assert backfill.main(["--init-configs", str(target_dir)]) == 0
+
+    assert (target_dir / "user_tick.json").exists()
+    assert (target_dir / "futures.json").exists()

@@ -7,6 +7,7 @@ import shutil
 import sys
 import tempfile
 import urllib.error
+import urllib.parse
 import urllib.request
 import zipfile
 from dataclasses import dataclass
@@ -14,7 +15,10 @@ from pathlib import Path
 
 
 ENV_OUTPUT_DIR = "TW_FUTOPT_DIR"
+ENV_TELEGRAM_API_TOKEN = "TELEGRAM_API_TOKEN"
+ENV_TELEGRAM_CHAT_ID = "TELEGRAM_CHAT_ID"
 DEFAULT_DAYS = 30
+TELEGRAM_TIMEOUT = 20.0
 USER_AGENT = "tw-futopt/0.1 (+https://www.taifex.com.tw/)"
 
 
@@ -56,6 +60,7 @@ DOWNLOAD_SPECS = (
 
 @dataclass
 class Summary:
+    planned: int = 0
     downloaded: int = 0
     skipped: int = 0
     missing: int = 0
@@ -64,6 +69,10 @@ class Summary:
     @property
     def ok(self) -> bool:
         return self.failed == 0
+
+    @property
+    def completed(self) -> int:
+        return self.downloaded + self.skipped
 
 
 def parse_date(value: str) -> dt.date:
@@ -150,7 +159,7 @@ def download_one(
 
 def run(dates: list[dt.date], output_dir: Path, force: bool, timeout: float) -> Summary:
     output_dir.mkdir(parents=True, exist_ok=True)
-    summary = Summary()
+    summary = Summary(planned=len(dates) * len(DOWNLOAD_SPECS))
 
     for trade_date in dates:
         print(f"[{trade_date.isoformat()}]")
@@ -166,6 +175,93 @@ def run(dates: list[dt.date], output_dir: Path, force: bool, timeout: float) -> 
                 summary.failed += 1
 
     return summary
+
+
+def env_value(name: str) -> str | None:
+    value = os.environ.get(name)
+    if value:
+        return value
+
+    if sys.platform != "win32":
+        return None
+
+    try:
+        import winreg
+    except ImportError:
+        return None
+
+    registry_locations = (
+        (winreg.HKEY_CURRENT_USER, "Environment"),
+        (
+            winreg.HKEY_LOCAL_MACHINE,
+            r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment",
+        ),
+    )
+    for root, subkey in registry_locations:
+        try:
+            with winreg.OpenKey(root, subkey) as key:
+                raw, _ = winreg.QueryValueEx(key, name)
+        except OSError:
+            continue
+        if raw:
+            return str(raw)
+    return None
+
+
+def telegram_credentials() -> tuple[str, str] | None:
+    token = env_value(ENV_TELEGRAM_API_TOKEN)
+    chat_id = env_value(ENV_TELEGRAM_CHAT_ID)
+    if not token or not chat_id:
+        return None
+    return token, chat_id
+
+
+def describe_telegram_error(exc: Exception) -> str:
+    if isinstance(exc, urllib.error.HTTPError):
+        return f"HTTP {exc.code}"
+    if isinstance(exc, urllib.error.URLError):
+        return f"URL error: {exc.reason}"
+    return exc.__class__.__name__
+
+
+def telegram_message(summary: Summary, success: bool) -> str:
+    status = "done" if success else "failed"
+    return f"tw_futopt {status} {summary.completed}/{summary.planned}"
+
+
+def send_telegram_message(message: str, timeout: float = TELEGRAM_TIMEOUT) -> None:
+    credentials = telegram_credentials()
+    if credentials is None:
+        raise RuntimeError(
+            f"{ENV_TELEGRAM_API_TOKEN} or {ENV_TELEGRAM_CHAT_ID} is not set"
+        )
+
+    token, chat_id = credentials
+    data = urllib.parse.urlencode({"chat_id": chat_id, "text": message}).encode("utf-8")
+    request = urllib.request.Request(
+        f"https://api.telegram.org/bot{token}/sendMessage",
+        data=data,
+        headers={
+            "Content-Type": "application/x-www-form-urlencoded",
+            "User-Agent": USER_AGENT,
+        },
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        response.read()
+
+
+def notify_telegram(summary: Summary, success: bool) -> None:
+    message = telegram_message(summary, success)
+    try:
+        send_telegram_message(message)
+    except Exception as exc:
+        print(
+            f"warning: telegram notification failed: {describe_telegram_error(exc)}",
+            file=sys.stderr,
+        )
+        return
+    print(f"telegram: {message}")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -207,14 +303,18 @@ def main(argv: list[str] | None = None) -> int:
     summary = run(dates, output_dir, force, args.timeout)
     print(
         "summary: "
+        f"planned={summary.planned}, "
         f"downloaded={summary.downloaded}, "
         f"skipped={summary.skipped}, "
         f"missing={summary.missing}, "
         f"failed={summary.failed}"
     )
 
+    exit_code = 0
     if force and (summary.failed > 0 or summary.missing > 0):
-        return 1
-    if summary.failed > 0:
-        return 1
-    return 0
+        exit_code = 1
+    elif summary.failed > 0:
+        exit_code = 1
+
+    notify_telegram(summary, exit_code == 0)
+    return exit_code

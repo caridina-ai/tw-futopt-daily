@@ -17,7 +17,7 @@ variable.
 Install from GitHub:
 
 ```powershell
-pip install git+https://github.com/caridina_ai/tw-futopt-daily.git
+pip install git+https://github.com/caridina-ai/tw-futopt-daily.git
 ```
 
 The `git+https://` prefix is required when installing directly from a Git
@@ -35,6 +35,13 @@ Set `TW_FUTOPT_DIR` as a Windows machine environment variable. For example:
 Open a new terminal after changing machine environment variables so the new
 process can read the updated value.
 
+Set Telegram notification credentials:
+
+```powershell
+[Environment]::SetEnvironmentVariable("TELEGRAM_API_TOKEN", "<bot-token>", "Machine")
+[Environment]::SetEnvironmentVariable("TELEGRAM_CHAT_ID", "<chat-id>", "Machine")
+```
+
 ## Usage
 
 Download the most recent 30 calendar days. Existing valid zip files are skipped:
@@ -51,6 +58,13 @@ python -m tw_futopt 2026-05-12
 
 If TAIFEX has no file for a date, such as a weekend or a not-yet-published
 trading day, the file is reported as `missing`.
+
+On completion, the downloader sends a concise Telegram notification when
+Telegram credentials are available, such as:
+
+```text
+tw_futopt done 4/4
+```
 
 ## Task Scheduler
 
@@ -87,11 +101,18 @@ backfill tool. It validates each source zip before copying, skips existing targe
 files, writes every file decision to a plain text log, and copies through a
 temporary `.part` file before replacing the final target.
 
+The package installs template backfill configs. Initialize editable copies into
+your own data directory and use those paths in scheduled jobs:
+
+```powershell
+python -m tw_futopt.backfill --init-configs D:\tw_futopt\backfill_configs
+```
+
 Smoke test the two built-in configs without copying files:
 
 ```powershell
-python -m tw_futopt.backfill backfill_configs\user_tick.json --dry-run --start-date 2017-07-28 --end-date 2017-07-28 --log logs\smoke-user-tick.log
-python -m tw_futopt.backfill backfill_configs\futures.json --dry-run --start-date 2011-01-03 --end-date 2011-01-03 --log logs\smoke-futures.log
+python -m tw_futopt.backfill D:\tw_futopt\backfill_configs\user_tick.json --dry-run --start-date 2017-07-28 --end-date 2017-07-28 --log logs\smoke-user-tick.log
+python -m tw_futopt.backfill D:\tw_futopt\backfill_configs\futures.json --dry-run --start-date 2011-01-03 --end-date 2011-01-03 --log logs\smoke-futures.log
 ```
 
 Run the full backfill. Run `user_tick.json` first because it contains
@@ -99,8 +120,8 @@ Run the full backfill. Run `user_tick.json` first because it contains
 secondary source for `Daily` only.
 
 ```powershell
-python -m tw_futopt.backfill backfill_configs\user_tick.json --log logs\backfill-user-tick.log
-python -m tw_futopt.backfill backfill_configs\futures.json --log logs\backfill-futures.log
+python -m tw_futopt.backfill D:\tw_futopt\backfill_configs\user_tick.json --log logs\backfill-user-tick.log
+python -m tw_futopt.backfill D:\tw_futopt\backfill_configs\futures.json --log logs\backfill-futures.log
 ```
 
 The built-in configs assume these source layouts:

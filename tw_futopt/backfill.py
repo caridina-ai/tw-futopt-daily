@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import importlib.resources as resources
 import json
 import os
 import shutil
@@ -15,6 +16,7 @@ from typing import Any
 
 ENV_OUTPUT_DIR = "TW_FUTOPT_DIR"
 DEFAULT_LOG_DIR_NAME = "logs"
+CONFIG_PACKAGE_DIR = "backfill_configs"
 
 
 @dataclass(frozen=True)
@@ -279,6 +281,31 @@ def default_log_path(config_name: str) -> Path:
     return Path(DEFAULT_LOG_DIR_NAME) / f"backfill-{config_name}-{stamp}.log"
 
 
+def packaged_config_dir() -> resources.abc.Traversable:
+    return resources.files("tw_futopt").joinpath(CONFIG_PACKAGE_DIR)
+
+
+def packaged_config_names() -> list[str]:
+    return sorted(
+        child.name
+        for child in packaged_config_dir().iterdir()
+        if child.is_file() and child.name.endswith(".json")
+    )
+
+
+def copy_packaged_configs(target_dir: Path, overwrite: bool = False) -> list[Path]:
+    target_dir.mkdir(parents=True, exist_ok=True)
+    copied: list[Path] = []
+    for name in packaged_config_names():
+        source = packaged_config_dir().joinpath(name)
+        target = target_dir / name
+        if target.exists() and not overwrite:
+            continue
+        target.write_bytes(source.read_bytes())
+        copied.append(target)
+    return copied
+
+
 def parse_iso_date(value: str) -> dt.date:
     try:
         return dt.date.fromisoformat(value)
@@ -293,7 +320,9 @@ def build_parser() -> argparse.ArgumentParser:
         prog="python -m tw_futopt.backfill",
         description="Copy valid historical TAIFEX daily zip files into TW_FUTOPT_DIR.",
     )
-    parser.add_argument("config", type=Path, help="path to a JSON backfill config")
+    parser.add_argument(
+        "config", nargs="?", type=Path, help="path to a JSON backfill config"
+    )
     parser.add_argument(
         "--log",
         type=Path,
@@ -319,12 +348,38 @@ def build_parser() -> argparse.ArgumentParser:
         type=parse_iso_date,
         help="only process dates on or before yyyy-mm-dd",
     )
+    parser.add_argument(
+        "--init-configs",
+        type=Path,
+        metavar="DIR",
+        help="copy bundled template configs to DIR and exit",
+    )
+    parser.add_argument(
+        "--overwrite-configs",
+        action="store_true",
+        help="replace existing files when used with --init-configs",
+    )
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+
+    if args.init_configs:
+        try:
+            copied = copy_packaged_configs(args.init_configs, args.overwrite_configs)
+        except OSError as exc:
+            print(f"error: failed to initialize configs: {exc}", file=sys.stderr)
+            return 2
+        print(f"config dir: {args.init_configs}")
+        print(f"copied: {len(copied)}")
+        return 0
+
+    if args.config is None:
+        parser.error(
+            "config is required unless --init-configs is used"
+        )
 
     try:
         config = BackfillConfig.from_file(args.config)

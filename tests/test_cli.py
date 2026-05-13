@@ -193,11 +193,19 @@ def test_run_counts_results(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> 
 
     summary = cli.run([dt.date(2026, 5, 12)], tmp_path, force=False, timeout=1)
 
+    assert summary.planned == 4
     assert summary.downloaded == 1
     assert summary.skipped == 1
     assert summary.missing == 1
     assert summary.failed == 1
     assert not summary.ok
+
+
+def test_telegram_message_reports_completed_over_planned() -> None:
+    summary = cli.Summary(planned=4, downloaded=3, skipped=1)
+
+    assert cli.telegram_message(summary, success=True) == "tw_futopt done 4/4"
+    assert cli.telegram_message(summary, success=False) == "tw_futopt failed 4/4"
 
 
 def test_main_returns_2_when_env_var_is_missing(
@@ -214,5 +222,27 @@ def test_main_returns_1_when_force_date_is_missing(
 ) -> None:
     monkeypatch.setenv(cli.ENV_OUTPUT_DIR, str(tmp_path))
     monkeypatch.setattr(cli, "run", lambda dates, output_dir, force, timeout: cli.Summary(missing=1))
+    monkeypatch.setattr(cli, "notify_telegram", lambda summary, success: None)
 
     assert cli.main(["2026-05-10"]) == 1
+
+
+def test_main_sends_telegram_done_message(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    sent: list[tuple[cli.Summary, bool]] = []
+    monkeypatch.setenv(cli.ENV_OUTPUT_DIR, str(tmp_path))
+    monkeypatch.setattr(
+        cli,
+        "run",
+        lambda dates, output_dir, force, timeout: cli.Summary(
+            planned=4, downloaded=2, skipped=2
+        ),
+    )
+    monkeypatch.setattr(
+        cli, "notify_telegram", lambda summary, success: sent.append((summary, success))
+    )
+
+    assert cli.main(["2026-05-12"]) == 0
+    assert sent == [(cli.Summary(planned=4, downloaded=2, skipped=2), True)]
