@@ -63,6 +63,7 @@ class Summary:
     planned: int = 0
     downloaded: int = 0
     skipped: int = 0
+    not_zip: int = 0
     missing: int = 0
     failed: int = 0
 
@@ -147,8 +148,8 @@ def download_one(
         print(f"failed     {filename} ({exc})", file=sys.stderr)
         return "failed"
     except RemoteFileUnavailable as exc:
-        print(f"missing    {filename} ({exc})")
-        return "missing"
+        print(f"not_zip    {filename} ({exc})")
+        return "not_zip"
     except (urllib.error.URLError, TimeoutError, OSError) as exc:
         print(f"failed     {filename} ({exc})", file=sys.stderr)
         return "failed"
@@ -169,6 +170,8 @@ def run(dates: list[dt.date], output_dir: Path, force: bool, timeout: float) -> 
                 summary.downloaded += 1
             elif result == "skipped":
                 summary.skipped += 1
+            elif result == "not_zip":
+                summary.not_zip += 1
             elif result == "missing":
                 summary.missing += 1
             else:
@@ -226,7 +229,7 @@ def describe_telegram_error(exc: Exception) -> str:
 
 def telegram_message(summary: Summary, success: bool) -> str:
     status = "done" if success else "failed"
-    return f"tw_futopt {status} {summary.completed}/{summary.planned}"
+    return f"tw_futopt {status} {summary.downloaded}/{summary.not_zip}/{summary.planned}"
 
 
 def send_telegram_message(message: str, timeout: float = TELEGRAM_TIMEOUT) -> None:
@@ -306,12 +309,13 @@ def main(argv: list[str] | None = None) -> int:
         f"planned={summary.planned}, "
         f"downloaded={summary.downloaded}, "
         f"skipped={summary.skipped}, "
+        f"not_zip={summary.not_zip}, "
         f"missing={summary.missing}, "
         f"failed={summary.failed}"
     )
 
     exit_code = 0
-    if force and (summary.failed > 0 or summary.missing > 0):
+    if force and (summary.failed > 0 or summary.missing > 0 or summary.not_zip > 0):
         exit_code = 1
     elif summary.failed > 0:
         exit_code = 1

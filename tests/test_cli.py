@@ -147,7 +147,7 @@ def test_download_one_treats_404_as_missing(
     assert cli.download_one(spec, trade_date, tmp_path, False, 1) == "missing"
 
 
-def test_download_one_treats_non_zip_response_as_missing(
+def test_download_one_treats_non_zip_response_as_not_zip(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -159,7 +159,7 @@ def test_download_one_treats_non_zip_response_as_missing(
 
     monkeypatch.setattr(cli, "fetch_url", raise_unavailable)
 
-    assert cli.download_one(spec, trade_date, tmp_path, False, 1) == "missing"
+    assert cli.download_one(spec, trade_date, tmp_path, False, 1) == "not_zip"
 
 
 def test_download_one_treats_network_error_as_failed(
@@ -178,7 +178,7 @@ def test_download_one_treats_network_error_as_failed(
 
 
 def test_run_counts_results(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    outcomes = iter(["downloaded", "skipped", "missing", "failed"])
+    outcomes = iter(["downloaded", "skipped", "not_zip", "failed"])
 
     def fake_download_one(
         spec: cli.DownloadSpec,
@@ -196,16 +196,17 @@ def test_run_counts_results(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> 
     assert summary.planned == 4
     assert summary.downloaded == 1
     assert summary.skipped == 1
-    assert summary.missing == 1
+    assert summary.not_zip == 1
+    assert summary.missing == 0
     assert summary.failed == 1
     assert not summary.ok
 
 
-def test_telegram_message_reports_completed_over_planned() -> None:
-    summary = cli.Summary(planned=4, downloaded=3, skipped=1)
+def test_telegram_message_reports_downloaded_not_zip_over_planned() -> None:
+    summary = cli.Summary(planned=120, downloaded=4, skipped=76, not_zip=20)
 
-    assert cli.telegram_message(summary, success=True) == "tw_futopt done 4/4"
-    assert cli.telegram_message(summary, success=False) == "tw_futopt failed 4/4"
+    assert cli.telegram_message(summary, success=True) == "tw_futopt done 4/20/120"
+    assert cli.telegram_message(summary, success=False) == "tw_futopt failed 4/20/120"
 
 
 def test_main_returns_2_when_env_var_is_missing(
@@ -216,12 +217,12 @@ def test_main_returns_2_when_env_var_is_missing(
     assert cli.main([]) == 2
 
 
-def test_main_returns_1_when_force_date_is_missing(
+def test_main_returns_1_when_force_date_is_not_zip(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     monkeypatch.setenv(cli.ENV_OUTPUT_DIR, str(tmp_path))
-    monkeypatch.setattr(cli, "run", lambda dates, output_dir, force, timeout: cli.Summary(missing=1))
+    monkeypatch.setattr(cli, "run", lambda dates, output_dir, force, timeout: cli.Summary(not_zip=1))
     monkeypatch.setattr(cli, "notify_telegram", lambda summary, success: None)
 
     assert cli.main(["2026-05-10"]) == 1

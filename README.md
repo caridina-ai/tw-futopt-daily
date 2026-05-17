@@ -56,15 +56,19 @@ Force overwrite one date:
 python -m tw_futopt 2026-05-12
 ```
 
-If TAIFEX has no file for a date, such as a weekend or a not-yet-published
-trading day, the file is reported as `missing`.
+If TAIFEX returns a page instead of a zip file for a date, such as a weekend or
+a not-yet-published trading day, the file is reported as `not_zip`.
 
 On completion, the downloader sends a concise Telegram notification when
 Telegram credentials are available, such as:
 
 ```text
-tw_futopt done 4/4
+tw_futopt done 4/20/120
 ```
+
+The three counts are downloaded files, non-zip responses, and total planned
+files. Existing valid zip files are still skipped, but skipped files are not
+included in the Telegram count.
 
 ## Task Scheduler
 
